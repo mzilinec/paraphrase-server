@@ -1,0 +1,11 @@
+[Unit]
+Description=Socket for paraf
+
+[Socket]
+ListenStream=/var/run/uwsgi/paraf.socket
+SocketUser=web
+SocketGroup=www-data
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target

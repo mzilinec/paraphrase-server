@@ -1,0 +1,6 @@
+flask
+json
+websocket
+tensorflow
+tensor2tensor
+tensorflow-serving-api

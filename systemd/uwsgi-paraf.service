@@ -1,0 +1,19 @@
+[Unit]
+Description=uWSGI paraf app
+After=syslog.target
+
+[Service]
+WorkingDirectory=/home/web/paraf-app
+ExecStart=/usr/local/bin/uwsgi \
+	--socket /var/run/uwsgi/paraf.socket \
+	--manage-script-name \
+	--mount /paraf=main:app \
+	--virtualenv=/home/web/venv \
+	--chmod-socket=666
+User=web
+Group=www-data
+Restart=on-failure
+KillSignal=SIGQUIT
+Type=notify
+StandardError=syslog
+NotifyAccess=all
