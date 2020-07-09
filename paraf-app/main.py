@@ -17,10 +17,15 @@ from tensor2tensor.utils import registry
 from tensor2tensor.utils import usr_dir
 import tensorflow.compat.v1 as tf
 
+from sentence_splitter import split_text_into_sentences
+import logging
+
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/models/serving")
 LANGUAGES = os.environ.get("LANGUAGES", "de en es hu lt ru").split()
 
 TF_SERVING_ADDRESS = os.environ.get("TF_SERVING_HOST", "127.0.0.1:9000")
+
+PREFIX = os.environ.get("PREFIX", "")
 
 app = Flask("paraphrase-server")
 CORS(app)
@@ -50,12 +55,17 @@ def start_tf():
 
 
 def _tf_predict(inputs):
-    outputs = serving_utils.predict(inputs, problem, request_fn)
-    out = []
-    for prediction in outputs:
-        foo, scores = prediction
-        out.append(foo)
-    return out
+    try:
+        outputs = serving_utils.predict(inputs, problem, request_fn)
+        out = []
+        for prediction in outputs:
+            foo, scores = prediction
+            out.append(foo)
+        return out
+    except:
+        logging.exception("##### Encountered an error")
+        raise
+#        start_tf()
 
 ##### TENSORFLOW CODE END   #####
 
@@ -65,7 +75,7 @@ def do_translation(inputs):
 def preprocess(text):
     return text.replace("\n", " ").replace("\0", "").strip()
 
-@app.route("/translate", methods=['POST', 'GET'])
+@app.route(PREFIX+"/translate", methods=['POST', 'GET'])
 def on_request():
     if request.method == 'POST':
         data = request.get_json(force=True)
@@ -76,7 +86,24 @@ def on_request():
         source_lang = request.args.get('lang')
     if not source_text or not source_lang:
         return "Please provide the following parameters: text, lang", 400
-    return translate(source_text, source_lang)
+
+    source_sentences = split_text_into_sentences(source_text, language=source_lang)
+    target_sentences = []
+    # translate each sentence individually
+    for source_sent in source_sentences:
+        target_sent = translate(source_sent, source_lang)
+        target_sentences.append(target_sent)
+    
+    # merge translated sentences
+    paraphrases = {}
+    for language in LANGUAGES:
+        paraphrase_in_lang = [para[language] for para in target_sentences]
+        paraphrase_in_lang = ' '.join(paraphrase_in_lang)
+        paraphrases[language] = paraphrase_in_lang
+
+    return jsonify(paraphrases)
+    #return translate(source_text, source_lang)
+
 
 def _token_for_language(lang):
     if lang not in LANGUAGES:
@@ -84,13 +111,14 @@ def _token_for_language(lang):
     return 2 + LANGUAGES.index(lang)
 
 def translate(source_text, source_lang):
+    print("Translating:", source_text)
     # translate text to all languages
     inputs = []
     for language in LANGUAGES:
         try:
             lang_token = _token_for_language(language)
         except:
-            return 400, jsonify({"status": "400", "message": "Invalid language: %s" % source_lang})
+            raise Exception({"status": "400", "message": "Invalid language: %s" % language})
         inputs.append((source_text, lang_token))
     translated = do_translation(inputs)
 
@@ -100,10 +128,10 @@ def translate(source_text, source_lang):
         try:
             lang_token = _token_for_language(source_lang)
         except:
-            return 400, jsonify({"status": "400", "message": "Invalid language: %s" % source_lang})
+            raise Exception({"status": "400", "message": "Invalid language: %s" % source_lang})
         inputs.append((sent, lang_token))
     translated = do_translation(inputs)
 
-    return jsonify(dict(zip(LANGUAGES, translated)))
+    return dict(zip(LANGUAGES, translated))
 
 start_tf()
